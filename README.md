@@ -21,9 +21,13 @@
 ...
 ```
 
-每次取窗口内 **800ms 的历史数据**，通过多项式最小二乘拟合，外推未来 **200ms** 的能耗曲线。运行效果如下：
+每次取窗口内 **800ms 的历史数据**，通过多项式最小二乘拟合，外推未来 **200ms** 的能耗曲线。
 
-<video src="plots/效果.webm" controls width="100%"></video>
+滑动窗口预测动画：
+
+![滑动窗口预测](verify_prediction/polyfit_animation.gif)
+
+> 完整运行效果：[▶ 点击观看](plots/效果.webm)
 
 > **流程**：前端选择时间区间 → Backend1 每 100ms 从 TDengine 查询最新数据 → Backend1 调用 Backend2 `/internal/calc/energy` 积分计算累计能耗 → 同时调用 `/internal/predict/train` 进行在线预测 → 前端实时渲染能耗曲线（蓝线）与预测曲线（橙黄虚线）。
 
@@ -155,18 +159,6 @@ cd frontend && npm install && npm run dev
 - 惰行/停站: 辅助功耗 120 kW
 - SOC 限幅: 充电截止 99%，放电截止 10%
 
-## 预测方法
-
-**多项式最小二乘拟合**（已替代 MLP/ONNX LSTM）：
-
-1. 提取最近 200ms 历史数据的速度和 RTE 序列
-2. 速度: 3 次多项式拟合 `[0, 199] → speed`
-3. RTE: 2 次多项式拟合 `[0, 199] → real_time_energy`
-4. 外推 200 步 (200ms): `t = 200, ..., 399`
-5. 位置积分: `pos += speed/3.6 × 0.001 / 1000` (km)
-6. 能量积分: `energy += RTE × speed × 0.001 / 3600` (kWh)
-
-详见 `verify_prediction/verify_polyfit_predict.py` 验证脚本。
 
 ## 目录
 
