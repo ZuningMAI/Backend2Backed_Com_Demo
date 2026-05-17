@@ -1,25 +1,86 @@
-# 列车能耗监控系统 (Train Energy Consumption Monitor)
+# 后端与后端通过API通信的一个demo
 
-三层架构的列车能耗实时计算与预测系统。
+列车能耗实时计算与预测系统的**后端通信验证 demo**。
+
+在实际部署中，前端和 Backend1 位于甲方服务器，Backend2（能耗计算引擎）由我方提供，部署在乙方服务器。两者之间通过 **HTTP API** 进行通信。
+
+本 demo 的目的是：**理清 Backend1 ↔ Backend2 之间的通信过程，验证通过 API 调用完成能耗计算与预测的可行性**。
+
+## 效果演示
+
+假设在一个区间的运行中，以 800ms 的历史数据为基础，预测未来 200ms 的能耗曲线。
+
+蓝色为实际能耗曲线，绿色为实际未来曲线，橙色虚线为多项式拟合预测曲线：
+
+![能耗预测曲线](verify_prediction/plots/pos_energy_curve.png)
+
+完整运行效果：
+
+<video src="plots/效果.webm" controls width="100%"></video>
+
+> **流程说明**：前端选择时间段 → Backend1 从 TDengine 查询数据 → Backend1 调用 Backend2 的 `/internal/calc/energy` 进行物理积分 → Backend1 调用 Backend2 的 `/internal/predict/train` 进行多项式拟合预测 → 前端展示实时能耗曲线和预测曲线。
 
 ## 架构
 
 ```
-Frontend (Vue 3, :5173)
-    │  HTTP polling, 1s interval
-    ▼
-Backend1 (FastAPI, :8000)
-    │  HTTP JSON
-    ▼
-Backend2 (Qt6/C++, :9000)  ←── TDengine (:6041, REST)
+┌──────────────────────────────┐     ┌──────────────────────────────┐
+│       甲方服务器               │     │       乙方服务器               │
+│                              │     │                              │
+│  Frontend (Vue 3)            │     │                              │
+│      │                       │     │                              │
+│      ▼                       │     │                              │
+│  Backend1 (FastAPI, :8000)   │────→│  Backend2 (Qt6/C++, :9000)  │
+│      │                       │ HTTP│                              │
+│      ▼                       │     │                              │
+│  TDengine (:6041)            │     │                              │
+└──────────────────────────────┘     └──────────────────────────────┘
 ```
 
-| 组件 | 技术 | 端口 |
+| 组件 | 技术 | 端口 | 归属 |
+|------|------|------|------|
+| Frontend | Vue 3 + Vite + ECharts 6 + Element Plus | 5173 | 甲方 |
+| Backend 1 | Python 3.12 + FastAPI + httpx | 8000 | 甲方 |
+| Backend 2 | Qt 6.8 / C++17 | 9000 | **乙方（我方）** |
+| TDengine | 3.x Community | 6041 | 甲方 |
+
+## API 通信总览
+
+### 外部接口（Frontend → Backend1）
+
+| 方法 | 路径 | 说明 |
 |------|------|------|
-| Frontend | Vue 3 + Vite + ECharts 6 + Element Plus | 5173 |
-| Backend 1 | Python 3.12 + FastAPI + httpx | 8000 |
-| Backend 2 | Qt 6.8 / C++17 + ONNX Runtime (预留) | 9000 |
-| TDengine | 3.x Community (taosd + taosAdapter) | 6041 |
+| POST | `/vehicle/energy/result` | 能耗计算：返回 5 项能耗指标 + 进度 + 实际曲线 |
+| POST | `/vehicle/energy/time_predict` | 能耗预测：返回实际曲线末端 + 预测曲线 |
+
+### 内部接口（Backend1 → Backend2）⭐ 乙方实现
+
+详见 [Backend1-Backend2通信文档.md](./Backend1-Backend2通信文档.md) 和 [Backend1-Backend2集成通信方案.md](./Backend1-Backend2集成通信方案.md)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/health` | 健康检查 |
+| POST | `/internal/calc/energy` | 能耗积分（批量 100 条 1ms 数据）→ 5 项能耗指标 |
+| POST | `/internal/predict/train` | 多项式拟合预测（800 条历史数据）→ 200 点预测曲线 |
+| POST | `/internal/session/reset` | 会话重置 |
+
+### 通信时序
+
+```
+时间 (ms)    Backend1 (甲方)                    Backend2 (乙方)
+───────────────────────────────────────────────────────────────
+0           前端发起请求
+            B1 创建 Session
+            B1 查询 TDengine [0, 100)         → POST /internal/calc/energy
+                                              → computeEnergy() 积分
+                                              ← 返回 5 项能耗指标
+100         查询 TDengine [100, 200)          → ...
+...
+800         查询 TDengine [0, 800)            → POST /internal/predict/train
+                                              → polyfit(速度,3次) + polyfit(RTE,2次)
+                                              → 外推 200 步
+                                              ← 返回 200 个预测点
+            B1 将预测曲线返回前端
+```
 
 ## 快速启动
 
@@ -46,13 +107,13 @@ cmake --build . -- -j$(nproc)
 
 ### 3. 启动服务
 
-**Backend 2:**
+**Backend 2（乙方）:**
 ```bash
 cd backend2/build
-./bin/backend2
+./bin/backend2    # 监听 :9000
 ```
 
-**Backend 1:**
+**Backend 1（甲方）:**
 ```bash
 cd backend1 && conda activate usecommon
 ALL_PROXY="" no_proxy="*" python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -66,41 +127,6 @@ cd frontend && npm install && npm run dev
 ### 4. 浏览器打开
 
 `http://localhost:5173` → 选择时间区间 → 确认计算
-
-## API 接口
-
-### 对外（Frontend ↔ Backend1）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/health` | 聚合健康检查（含 TDengine + Backend2 状态） |
-| POST | `/vehicle/energy/result` | 能耗计算：返回 5 项能耗指标 + 进度 + 实际曲线 |
-| POST | `/vehicle/energy/time_predict` | 能耗预测：返回实际曲线末端 + 预测曲线 |
-
-### 内部（Backend1 ↔ Backend2）
-
-详见 [Backend1-Backend2通信文档.md](./Backend1-Backend2通信文档.md)
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/health` | 健康检查 |
-| POST | `/internal/calc/energy` | 能耗积分（批量 100 条 1ms 数据） |
-| POST | `/internal/predict/train` | 多项式拟合预测（800 条历史数据） |
-| POST | `/internal/session/reset` | 会话重置 |
-
-## 数据流
-
-```
-流 1（能耗计算，100ms 周期）:
-  B1 → TDengine 读取 100 行 (gtm >= t AND gtm < t+100)
-     → B2 /internal/calc/energy 积分
-     → 返回 5 项能耗指标 + 构建 actual_curve
-
-流 2（能耗预测，100ms 周期，延迟 800ms 启动）:
-  B1 → TDengine 读取 800 行 (gtm >= t-800 AND gtm < t)
-     → B2 /internal/predict/train 多项式拟合 + 外推 200 步
-     → 返回 predicted_curve (201 点)
-```
 
 ## 能耗物理模型
 
@@ -139,47 +165,43 @@ cd frontend && npm install && npm run dev
 
 ```
 API_COM/
-├── frontend/                     # Vue 3 前端
+├── frontend/                     # Vue 3 前端（甲方）
 │   └── src/
 │       ├── App.vue               # 主组件（轮询、图表、状态管理）
-│       ├── main.ts               # 入口（ElementPlus, ECharts 全局注册）
 │       ├── api/index.ts          # Axios 客户端
 │       ├── types/api.ts          # TypeScript 类型
 │       └── components/
 │           ├── EnergyChart.vue   # 能耗曲线（vue-echarts）
 │           ├── EnergyMetrics.vue # 5 项指标卡片
 │           └── TimeRangePicker.vue # 时间段选择器
-├── backend1/                     # FastAPI 调度层
+├── backend1/                     # FastAPI 调度层（甲方）
 │   └── app/
-│       ├── main.py               # 应用入口 + CORS + lifespan
-│       ├── config.py             # 环境变量配置
-│       ├── models/schemas.py     # Pydantic 请求/响应模型
-│       ├── routers/
-│       │   ├── energy.py         # /vehicle/energy/* 路由
-│       │   └── health.py         # /health 路由
-│       └── services/
-│           ├── scheduler.py      # 核心调度器（calc + predict 双线程）
-│           ├── backend2_client.py # Backend2 HTTP 客户端 (async)
-│           ├── tdengine_client.py # TDengine REST 客户端
-│           └── init_db.py        # CSV → TDengine 初始化（一次性）
-├── backend2/                     # Qt6/C++ 计算引擎
+│       ├── routers/energy.py     # /vehicle/energy/* 路由
+│       ├── services/
+│       │   ├── scheduler.py      # 核心调度器（calc + predict 双线程）
+│       │   ├── backend2_client.py # Backend2 HTTP 客户端 (async)
+│       │   ├── tdengine_client.py # TDengine REST 客户端
+│       │   └── init_db.py        # CSV → TDengine 初始化
+│       └── models/schemas.py     # Pydantic 模型
+├── backend2/                     # Qt6/C++ 计算引擎（⭐ 乙方）
 │   └── src/
-│       ├── Com/server.cpp        # HTTP 路由 + 多项式拟合 (polyfit/polyval)
-│       ├── engine/
-│       │   ├── physics.cpp/h     # 物理引擎（功率分解、能量积分）
-│       │   ├── session_mgr.cpp/h # 会话缓冲区（deque，最大 100k 点）
-│       │   ├── dl_infer.cpp/h    # ONNX Runtime 推理（预留）
-│       │   └── mlp.cpp/h         # Eigen MLP（预留）
-│       ├── config.h              # 端口/超时
-│       └── main.cpp              # QCoreApplication 入口
-├── data/                         # 原始 CSV (OptReslog.*.csv)
+│       ├── Com/server.cpp        # HTTP 路由 + 多项式拟合
+│       └── engine/
+│           ├── physics.cpp/h     # 物理引擎（功率分解、能量积分）
+│           ├── session_mgr.cpp/h # 会话缓冲区
+│           ├── dl_infer.cpp/h    # ONNX Runtime 推理（预留）
+│           └── mlp.cpp/h         # Eigen MLP（预留）
+├── data/                         # 原始 CSV 遥测数据
 ├── verify_prediction/            # 预测验证脚本
-│   └── verify_polyfit_predict.py # 多项式拟合验证（动画 + 误差统计）
+│   ├── verify_polyfit_predict.py # 多项式拟合验证
+│   └── plots/pos_energy_curve.png # 验证生成的能耗曲线
 ├── training/                     # LSTM 模型训练
 │   ├── train.py                  # PyTorch 训练
 │   └── export_onnx.py            # → ONNX 导出
-└── tools/
-    └── csv_feeder.py             # 独立 CSV 数据馈送脚本
+├── tools/
+│   └── csv_feeder.py             # 独立 CSV 数据馈送脚本
+├── Backend1-Backend2通信文档.md    # 内部 API 详细说明（含代码引用）
+└── Backend1-Backend2集成通信方案.md # 甲方集成指南（部署方案 + 数据映射）
 ```
 
 ## 关键参数
@@ -196,17 +218,4 @@ API_COM/
 | 预测延迟 | 800ms | `scheduler.py:65` |
 | 预测窗口 | 800ms | `scheduler.py:133` |
 | 预测步数 | 200 (200ms) | `server.cpp:163` |
-| 全线路时间 | 2813s | `scheduler.py:31` |
-| 会话超时 | 3600s | `config.h:8` |
-
-## 效果演示
-
-### 能耗曲线
-
-多项式拟合预测（800ms 历史 → 200ms 预测），蓝色为实际能耗曲线，绿色为实际未来曲线，橙色虚线为预测曲线：
-
-![能耗曲线](verify_prediction/plots/pos_energy_curve.png)
-
-### 完整运行效果
-
-<video src="plots/效果.webm" controls width="100%"></video>
+| Backend2 端口 | 9000 | `config.h:7` |
