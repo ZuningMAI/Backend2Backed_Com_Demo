@@ -27,7 +27,9 @@
 
 ![滑动窗口预测](verify_prediction/polyfit_animation.gif)
 
-> 完整运行效果：[▶ 点击观看](plots/效果.webm)
+完整运行效果：
+
+![完整运行效果](plots/效果.gif)
 
 > **流程**：前端选择时间区间 → Backend1 每 100ms 从 TDengine 查询最新数据 → Backend1 调用 Backend2 `/internal/calc/energy` 积分计算累计能耗 → 同时调用 `/internal/predict/train` 进行在线预测 → 前端实时渲染能耗曲线（蓝线）与预测曲线（橙黄虚线）。
 
