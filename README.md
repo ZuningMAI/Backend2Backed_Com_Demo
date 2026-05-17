@@ -1,4 +1,4 @@
-# 后端与后端通过API通信的一个demo
+# 后端与后端通过API通信的demo
 
 列车能耗实时计算与预测系统的**后端通信验证 demo**。
 
@@ -8,17 +8,15 @@
 
 ## 效果演示
 
-假设在一个区间的运行中，以 800ms 的历史数据为基础，预测未来 200ms 的能耗曲线。
+以一个完整区间为例，该区间的累计净能耗-位置曲线（地面真值）如图所示：
 
-蓝色为实际能耗曲线，绿色为实际未来曲线，橙色虚线为多项式拟合预测曲线：
+![完整区间能耗曲线](verify_prediction/plots/pos_energy_curve.png)
 
-![能耗预测曲线](verify_prediction/plots/pos_energy_curve.png)
-
-完整运行效果：
+在此区间上，以 **100ms 为通信周期**进行在线预测：每次取最近 **800ms 的历史数据**，通过多项式最小二乘拟合外推未来 **200ms** 的能耗曲线。预测效果如下：
 
 <video src="plots/效果.webm" controls width="100%"></video>
 
-> **流程说明**：前端选择时间段 → Backend1 从 TDengine 查询数据 → Backend1 调用 Backend2 的 `/internal/calc/energy` 进行物理积分 → Backend1 调用 Backend2 的 `/internal/predict/train` 进行多项式拟合预测 → 前端展示实时能耗曲线和预测曲线。
+> **流程**：前端选择时间区间 → Backend1 每 100ms 从 TDengine 查询最新数据 → Backend1 调用 Backend2 `/internal/calc/energy` 积分计算累计能耗 → 同时调用 `/internal/predict/train` 进行在线预测 → 前端实时渲染能耗曲线（蓝线）与预测曲线（橙黄虚线）。
 
 ## 架构
 
