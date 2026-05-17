@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(CppLSTM VERSION 0.1 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(Eigen3 REQUIRED)
+add_executable(cpp_lstm main.cpp lstm.cpp lstm.h)
+target_include_directories(cpp_lstm PRIVATE ${EIGEN3_INCLUDE_DIR})

@@ -1,0 +1,75 @@
+# ── Build artifacts ──
+backend2/build/
+backend2/backend2_autogen/
+verify_prediction/cpp_lstm/build/
+
+# ── Prebuilt SDK ──
+onnxruntime-linux-x64-1.21.0/
+onnxruntime-linux-x64-1.21.0.tgz
+backend2/lib/onnxruntime/
+
+# ── Dependencies ──
+frontend/node_modules/
+frontend/dist/
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# ── Duplicate CSV in verify_prediction ──
+verify_prediction/*.csv
+verify_prediction/telemetry.bin
+
+# ── Trained models (regeneratable from training scripts) ──
+*.onnx
+*.pt
+
+# ── Generated plots ──
+plots/sliding_windows/
+plots/sliding_windows_com/
+plots/*.png
+!plots/效果.webm
+plots_lstm/
+plots_pretrain/
+verify_prediction/plots/sliding_windows/
+verify_prediction/plots/sliding_windows_com/
+verify_prediction/plots/*.png
+!verify_prediction/plots/pos_energy_curve.png
+verify_prediction/plots_lstm/
+verify_prediction/plots_polyfit/
+verify_prediction/plots_pretrain/
+verify_prediction/kinematic/plots_methods/
+verify_prediction/pipe_lstm/plots_methods/
+
+# ── Screenshots ──
+截图*.png
+前端页面设计.jpg
+
+# ── Screen recordings (except demo) ──
+outgoing_*.webm
+
+# ── Other root .md not in scope ──
+API接口.md
+程序实现方案.md
+技术方案讨论.md
+能耗计算部分资料.md
+能耗计算方案_真实数据.md
+能耗预测部分资料.md
+
+# ── IDE / Editor ──
+.qtcreator/
+*.user
+*.autosave
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Runtime / temp ──
+*.log
+/tmp/
+*.pid
+pipe_results.json
